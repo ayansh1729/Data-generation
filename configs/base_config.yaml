@@ -1,0 +1,117 @@
+# Model Configuration
+model:
+  type: "DDPM"
+  image_size: 64
+  channels: 3
+  timesteps: 1000
+  noise_schedule: "linear"  # linear, cosine, sigmoid
+  
+  # U-Net Architecture
+  unet:
+    dim: 64
+    dim_mults: [1, 2, 4, 8]
+    attention_resolutions: [16, 8]
+    num_res_blocks: 2
+    dropout: 0.1
+    use_attention: true
+
+# Training Configuration
+training:
+  batch_size: 128
+  learning_rate: 2.0e-4
+  weight_decay: 0.0
+  epochs: 500
+  gradient_clip: 1.0
+  ema_decay: 0.9999
+  
+  # Optimizer
+  optimizer: "AdamW"
+  scheduler: "cosine"
+  warmup_steps: 1000
+  
+  # Checkpointing
+  save_every: 10
+  eval_every: 5
+  keep_last_n: 5
+
+# Data Configuration
+data:
+  dataset: "cifar10"  # cifar10, celeba, custom
+  data_dir: "./data/raw"
+  num_workers: 4
+  pin_memory: true
+  
+  # Preprocessing
+  preprocessing:
+    normalize: true
+    mean: [0.5, 0.5, 0.5]
+    std: [0.5, 0.5, 0.5]
+    
+  # Augmentation
+  augmentation:
+    horizontal_flip: true
+    random_crop: false
+    color_jitter: false
+
+# Explainability Configuration
+explainability:
+  enabled: true
+  methods: ["gradcam", "attention", "diffusion_trace"]
+  save_visualizations: true
+  visualization_frequency: 50
+  
+  gradcam:
+    target_layers: ["down.2", "mid.0"]
+    
+  attention:
+    save_attention_maps: true
+    layers: "all"
+    
+  diffusion_trace:
+    save_intermediate_steps: true
+    num_steps_to_save: [0, 250, 500, 750, 999]
+
+# Evaluation Configuration
+evaluation:
+  metrics: ["fid", "is", "diversity"]
+  num_samples: 5000
+  batch_size: 256
+  
+  fid:
+    dims: 2048
+    
+  inception_score:
+    splits: 10
+
+# Logging Configuration
+logging:
+  use_wandb: false
+  wandb_project: "diffusion-synthetic-data"
+  wandb_entity: null
+  use_tensorboard: true
+  log_dir: "./experiments/logs"
+  log_frequency: 100
+
+# System Configuration
+system:
+  device: "cuda"  # cuda, cpu, mps
+  mixed_precision: true
+  compile_model: false  # Use torch.compile (PyTorch 2.0+)
+  seed: 42
+  deterministic: false
+
+# Sampling Configuration
+sampling:
+  method: "ddpm"  # ddpm, ddim, dpm-solver
+  num_samples: 16
+  ddim_steps: 50
+  eta: 0.0
+  guidance_scale: 1.0
+
+# Paths
+paths:
+  checkpoint_dir: "./experiments/checkpoints"
+  log_dir: "./experiments/logs"
+  sample_dir: "./experiments/samples"
+  config_dir: "./configs"
+
