@@ -145,17 +145,19 @@ class DownBlock(nn.Module):
         
         self.downsample = nn.Conv2d(out_channels, out_channels, 3, stride=2, padding=1)
 
-    def forward(self, x: torch.Tensor, time_emb: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
-        skip_connections = []
-        
+    def forward(self, x: torch.Tensor, time_emb: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Process through blocks
         for block, attn in zip(self.blocks, self.attention):
             x = block(x, time_emb)
             x = attn(x)
-            skip_connections.append(x)
         
+        # Save this as skip connection (before downsampling!)
+        skip = x
+        
+        # Downsample
         x = self.downsample(x)
         
-        return x, skip_connections
+        return x, skip
 
 
 class UpBlock(nn.Module):
@@ -193,15 +195,14 @@ class UpBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        skip_connections: List[torch.Tensor],
+        skip: Optional[torch.Tensor],
         time_emb: torch.Tensor
     ) -> torch.Tensor:
         # Upsample first
         x = self.upsample(x)
         
-        # Concatenate with skip connection before first block
-        if len(skip_connections) > 0:
-            skip = skip_connections.pop()
+        # Concatenate with skip connection if provided
+        if skip is not None:
             x = torch.cat([x, skip], dim=1)
         
         # Process through residual blocks and attention
@@ -326,26 +327,23 @@ class UNet(nn.Module):
         # Initial convolution
         x = self.init_conv(x)
         
-        # Store skip connections from all down blocks
-        all_skip_connections = []
+        # Store skip connections from each down block
+        skips = []
         
         # Downsampling
         for down in self.downs:
-            x, skip_connections = down(x, t)
-            all_skip_connections.extend(skip_connections)
+            x, skip = down(x, t)
+            skips.append(skip)
         
         # Middle
         x = self.mid_block1(x, t)
         x = self.mid_attn(x)
         x = self.mid_block2(x, t)
         
-        # Upsampling - reverse the skip connections list
-        all_skip_connections = list(reversed(all_skip_connections))
-        
+        # Upsampling - use skip connections in reverse order
         for up in self.ups:
-            # Pass one skip connection per up block
-            skip_for_this_level = [all_skip_connections.pop(0)] if all_skip_connections else []
-            x = up(x, skip_for_this_level, t)
+            skip = skips.pop() if skips else None
+            x = up(x, skip, t)
         
         # Final convolution
         return self.final_conv(x)
