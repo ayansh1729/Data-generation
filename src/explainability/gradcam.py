@@ -37,12 +37,20 @@ class GradCAMExplainer:
         
         def forward_hook(name):
             def hook(module, input, output):
-                self.activations[name] = output.detach()
+                # Handle case where output is a tuple (e.g., from DownBlock)
+                if isinstance(output, tuple):
+                    # Save the first element (main output)
+                    self.activations[name] = output[0].detach()
+                else:
+                    self.activations[name] = output.detach()
             return hook
         
         def backward_hook(name):
             def hook(module, grad_input, grad_output):
-                self.gradients[name] = grad_output[0].detach()
+                # grad_output is the gradient w.r.t. output of this layer
+                # It's a tuple, and we want the first element if it exists
+                if grad_output[0] is not None:
+                    self.gradients[name] = grad_output[0].detach()
             return hook
         
         for name, module in self.model.named_modules():
@@ -101,7 +109,16 @@ class GradCAMExplainer:
             gradients = self.gradients[name]
             activations = self.activations[name]
             
-            # Global average pooling of gradients
+            # Check if both have spatial dimensions (B, C, H, W)
+            if gradients.dim() != 4 or activations.dim() != 4:
+                # Skip this layer if it doesn't have spatial dimensions
+                continue
+            
+            # Ensure spatial dimensions match
+            if gradients.shape[2:] != activations.shape[2:]:
+                continue
+            
+            # Global average pooling of gradients over spatial dimensions
             weights = gradients.mean(dim=(2, 3), keepdim=True)
             
             # Weighted combination of activation maps
@@ -110,9 +127,13 @@ class GradCAMExplainer:
             # ReLU
             cam = F.relu(cam)
             
-            # Normalize
-            cam = cam - cam.min()
-            cam = cam / (cam.max() + 1e-8)
+            # Normalize per sample
+            batch_size = cam.shape[0]
+            for i in range(batch_size):
+                cam_i = cam[i]
+                cam_i = cam_i - cam_i.min()
+                cam_i = cam_i / (cam_i.max() + 1e-8)
+                cam[i] = cam_i
             
             # Resize to input size
             cam = F.interpolate(
